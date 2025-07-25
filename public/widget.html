@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=348, height=188, initial-scale=1.0">
+    <title>Trading Alerts Widget</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            width: 348px;
+            height: 188px;
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 16px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .title {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .time {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        
+        .news-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .news-title {
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.3;
+            margin-bottom: 4px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .news-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            opacity: 0.8;
+        }
+        
+        .ticker {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            font-size: 14px;
+            opacity: 0.7;
+        }
+        
+        .chart-bg {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100%;
+            opacity: 0.1;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 50'%3E%3Cpath d='M0,25 Q25,10 50,20 T100,15' stroke='%23ffffff' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat center;
+            background-size: contain;
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-bg"></div>
+    
+    <div class="header">
+        <div class="title">
+            📈 Trading Alerts
+        </div>
+        <div class="time" id="current-time"></div>
+    </div>
+    
+    <div id="content" class="loading">
+        Loading market data...
+    </div>
+
+    <script>
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = 
+                now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        async function loadWidgetData() {
+            try {
+                const response = await fetch('/api/widget-data');
+                const data = await response.json();
+                
+                const content = document.getElementById('content');
+                content.innerHTML = '';
+                content.classList.remove('loading');
+                
+                data.items.slice(0, 2).forEach(item => {
+                    const newsItem = document.createElement('div');
+                    newsItem.className = 'news-item';
+                    newsItem.innerHTML = `
+                        <div class="news-title">${item.title}</div>
+                        <div class="news-meta">
+                            <span class="ticker">${item.subtitle}</span>
+                            <span>${item.time}</span>
+                        </div>
+                    `;
+                    content.appendChild(newsItem);
+                });
+                
+            } catch (error) {
+                console.error('Failed to load widget data:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="news-item">
+                        <div class="news-title">Unable to load market data</div>
+                        <div class="news-meta">
+                            <span class="ticker">ERROR</span>
+                            <span>--:--</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Initialize
+        updateTime();
+        loadWidgetData();
+        
+        // Update time every minute
+        setInterval(updateTime, 60000);
+        
+        // Refresh data every 5 minutes
+        setInterval(loadWidgetData, 300000);
+    </script>
+</body>
+</html>
