@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, X, TrendingUp, Info, Smartphone, Key, Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react"
+import { Plus, X, TrendingUp, Info, Key, Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 
 interface ApiKey {
@@ -320,55 +320,6 @@ function ApiKeysManager() {
   )
 }
 
-function NotificationInfo() {
-  const [isIOS, setIsIOS] = useState(false)
-
-  useEffect(() => {
-    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream)
-  }, [])
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Smartphone className="h-5 w-5" />
-          Notifications
-        </CardTitle>
-        <CardDescription>Manage alerts through your device settings</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-          <div className="flex items-start gap-2 text-blue-800">
-            <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <div className="text-sm">
-              <p className="font-medium mb-1">Notifications are automatically enabled</p>
-              <p>You'll receive alerts for breaking news about your watchlist stocks.</p>
-            </div>
-          </div>
-        </div>
-
-        {isIOS && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">To manage notifications:</p>
-            <ol className="text-xs text-gray-600 space-y-1 ml-4">
-              <li>1. Go to iPhone Settings</li>
-              <li>2. Find "Trading Alerts" in your app list</li>
-              <li>3. Tap "Notifications"</li>
-              <li>4. Customize your alert preferences</li>
-            </ol>
-          </div>
-        )}
-
-        <div className="pt-2 border-t">
-          <p className="text-xs text-muted-foreground">
-            High-impact economic events and breaking news will trigger immediate alerts.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function WatchlistPage() {
   const [isPreviewMode, setIsPreviewMode] = useState(false)
 
@@ -386,7 +337,7 @@ export default function WatchlistPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-gray-900">⚙️ Configuration</h1>
-              <p className="text-xs text-gray-600">Manage your watchlist, API keys, and notifications</p>
+              <p className="text-xs text-gray-600">Manage your watchlist and API keys</p>
             </div>
             <Navigation />
           </div>
@@ -402,9 +353,9 @@ export default function WatchlistPage() {
           </div>
         )}
 
-        <ApiKeysManager />
+        {/* Moved TickerManager first as requested */}
         <TickerManager />
-        <NotificationInfo />
+        <ApiKeysManager />
       </div>
     </div>
   )

@@ -17,6 +17,7 @@ import {
   X,
   Zap,
   Sparkles,
+  CheckCheck,
 } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { subscribeUser } from "./actions"
@@ -43,8 +44,34 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
+// Create a more robust global identifier for news items
+function createGlobalId(item: any): string {
+  // Normalize title more aggressively
+  const normalizedTitle = item.title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ") // Replace all non-alphanumeric with spaces
+    .replace(/\s+/g, " ") // Collapse multiple spaces
+    .trim()
+    .substring(0, 80) // Shorter substring for better matching
+
+  // Use URL as primary identifier if available, fallback to title
+  if (item.url) {
+    try {
+      const url = new URL(item.url)
+      return `url-${url.hostname}-${url.pathname.replace(/[^\w]/g, "")}`
+    } catch {
+      // If URL parsing fails, fall back to title-based ID
+    }
+  }
+
+  // Fallback to title + rough time
+  const timeKey = item.time_published.substring(0, 10) // YYYYMMDDHH for better grouping
+  return `title-${normalizedTitle.replace(/\s+/g, "-")}-${timeKey}`
+}
+
 interface NewsItem {
   id: string
+  globalId: string
   title: string
   summary: string
   url: string
@@ -109,7 +136,7 @@ function NewsCard({ news, onMarkAsRead }: { news: NewsItem; onMarkAsRead: (id: s
 
   return (
     <Card
-      className={`mb-3 transition-all duration-500 ${news.isRead ? "opacity-50" : ""} ${
+      className={`mb-3 transition-all duration-500 ${
         isVeryRecent() ? "ring-2 ring-green-200 bg-green-50/30" : ""
       } ${news.isNew ? "ring-2 ring-blue-200 bg-blue-50/30 animate-pulse" : ""}`}
     >
@@ -153,11 +180,6 @@ function NewsCard({ news, onMarkAsRead }: { news: NewsItem; onMarkAsRead: (id: s
                   </Badge>
                 )
               )}
-              {news.provider && (
-                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                  {news.provider}
-                </Badge>
-              )}
             </div>
           </div>
 
@@ -167,12 +189,10 @@ function NewsCard({ news, onMarkAsRead }: { news: NewsItem; onMarkAsRead: (id: s
               Read Article
             </Button>
 
-            {!news.isRead && (
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onMarkAsRead(news.id)}>
-                <Check className="h-3 w-3 mr-1" />
-                Mark Read
-              </Button>
-            )}
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onMarkAsRead(news.id)}>
+              <Check className="h-3 w-3 mr-1" />
+              Mark Read
+            </Button>
           </div>
         </div>
       </CardContent>
@@ -186,6 +206,7 @@ function NewsFeed() {
   const [isLoading, setIsLoading] = useState(true)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [readItems, setReadItems] = useState<Set<string>>(new Set())
+  const [readItemsLoaded, setReadItemsLoaded] = useState(false) // New state to track if read items are loaded
   const [sortOption, setSortOption] = useState<SortOption>("newest")
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [newsSources, setNewsSources] = useState<any[]>([])
@@ -198,6 +219,30 @@ function NewsFeed() {
     }
     return ["TSLA", "AAPL", "MSFT"]
   }
+
+  const getReadItems = (): Set<string> => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("trading-read-items")
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    }
+    return new Set()
+  }
+
+  const saveReadItems = (readItems: Set<string>) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("trading-read-items", JSON.stringify(Array.from(readItems)))
+    }
+  }
+
+  // Load read items first, then set the flag
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedReadItems = getReadItems()
+      setReadItems(savedReadItems)
+      setReadItemsLoaded(true) // Mark as loaded
+      console.log(`📖 Loaded ${savedReadItems.size} read items from storage`)
+    }
+  }, [])
 
   const filterRecentNews = (newsItems: NewsItem[]) => {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -291,14 +336,22 @@ function NewsFeed() {
     initializePushNotifications()
   }, [])
 
+  // Only start fetching news after read items are loaded
   useEffect(() => {
+    if (!readItemsLoaded) return // Don't fetch until read items are loaded
+
     fetchNews(true) // Initial load
     const interval = setInterval(() => fetchNews(false), 90000) // Refresh every 1.5 minutes
     return () => clearInterval(interval)
-  }, [])
+  }, [readItemsLoaded]) // Depend on readItemsLoaded
 
   const fetchNews = useCallback(
     async (isInitialLoad = false) => {
+      if (!readItemsLoaded) {
+        console.log("⏳ Waiting for read items to load before fetching news...")
+        return // Don't fetch if read items aren't loaded yet
+      }
+
       if (isInitialLoad) {
         setIsLoading(true)
       }
@@ -324,27 +377,42 @@ function NewsFeed() {
 
         const recentNews = filterRecentNews(data.feed || [])
 
+        // Add global IDs and filter out read items
+        const newsWithGlobalIds = recentNews.map((item: any) => ({
+          ...item,
+          globalId: createGlobalId(item),
+        }))
+
+        // Filter out items that have been marked as read
+        const unreadNews = newsWithGlobalIds.filter((item: any) => {
+          const isRead = readItems.has(item.globalId)
+          if (isRead) {
+            console.log(`🚫 Filtering out read item: ${item.title.substring(0, 50)}...`)
+          }
+          return !isRead
+        })
+
+        console.log(
+          `📰 Fetched ${recentNews.length} total, ${unreadNews.length} unread (${readItems.size} read items in memory)`,
+        )
+
         if (isInitialLoad) {
-          // Initial load: replace all news
-          const newsWithIds = recentNews.map((item: any) => ({
-            ...item,
-            isRead: readItems.has(item.id),
-          }))
-          setAllNews(newsWithIds)
+          // Initial load: replace all news with unread items only
+          setAllNews(unreadNews)
         } else {
-          // Incremental update: add only new items
-          const existingIds = new Set(allNews.map((item) => item.id))
-          const newItems = recentNews.filter((item: any) => !existingIds.has(item.id))
+          // Incremental update: add only new unread items
+          // Use globalId for deduplication to prevent duplicates
+          const existingGlobalIds = new Set(allNews.map((item) => item.globalId))
+          const newItems = unreadNews.filter((item: any) => !existingGlobalIds.has(item.globalId))
 
           if (newItems.length > 0) {
-            const newsWithIds = newItems.map((item: any) => ({
+            const newsWithNewFlag = newItems.map((item: any) => ({
               ...item,
-              isRead: readItems.has(item.id),
               isNew: true, // Mark as new for visual indication
             }))
 
             // Add new items to the top
-            setAllNews((prevNews) => [...newsWithIds, ...prevNews])
+            setAllNews((prevNews) => [...newsWithNewFlag, ...prevNews])
             setNewItemsCount(newItems.length)
 
             // Remove "new" indicator after 10 seconds
@@ -353,7 +421,7 @@ function NewsFeed() {
               setNewItemsCount(0)
             }, 10000)
 
-            console.log(`📰 Added ${newItems.length} new articles`)
+            console.log(`📰 Added ${newItems.length} new unread articles`)
           }
         }
 
@@ -367,20 +435,54 @@ function NewsFeed() {
         }
       }
     },
-    [allNews, readItems],
+    [allNews, readItems, readItemsLoaded], // Add readItemsLoaded as dependency
   )
 
   const markAsRead = (id: string) => {
+    // Find the item to get its globalId
+    const item = allNews.find((news) => news.id === id)
+    if (!item) return
+
     const newReadItems = new Set(readItems)
-    newReadItems.add(id)
+    newReadItems.add(item.globalId)
     setReadItems(newReadItems)
 
-    setAllNews((prevNews) => prevNews.map((item) => (item.id === id ? { ...item, isRead: true } : item)))
+    // Save to localStorage
+    saveReadItems(newReadItems)
+
+    // Remove the item from the list immediately
+    setAllNews((prevNews) => prevNews.filter((news) => news.id !== id))
+
+    console.log(`📖 Marked as read: ${item.title.substring(0, 50)}... (${newReadItems.size} total read)`)
   }
 
-  const unreadCount = filteredNews.filter((item) => !item.isRead).length
+  const markAllAsRead = () => {
+    const newReadItems = new Set(readItems)
+
+    // Add all currently visible items to read list
+    filteredNews.forEach((item) => {
+      newReadItems.add(item.globalId)
+    })
+
+    setReadItems(newReadItems)
+    saveReadItems(newReadItems)
+
+    // Remove all currently visible items from the list
+    const visibleIds = new Set(filteredNews.map((item) => item.id))
+    setAllNews((prevNews) => prevNews.filter((news) => !visibleIds.has(news.id)))
+
+    console.log(`📖 Marked ${filteredNews.length} articles as read (${newReadItems.size} total read)`)
+  }
+
+  const unreadCount = filteredNews.length
   const availableTickers = getWatchlistTickers(allNews)
   const activeSources = newsSources.filter((s) => s.status === "fulfilled").length
+
+  // Format time in 24-hour format
+  const formatLastUpdate = (date: Date | null) => {
+    if (!date) return "Never"
+    return date.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit" })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -391,7 +493,7 @@ function NewsFeed() {
             <div>
               <h1 className="text-xl font-bold text-gray-900">📈 Trading News</h1>
               <p className="text-xs text-gray-600">
-                {unreadCount} unread • {activeSources} sources • Updated: {lastUpdate?.toLocaleTimeString() || "Never"}
+                {unreadCount} unread • {activeSources} sources • Updated: {formatLastUpdate(lastUpdate)}
                 {newItemsCount > 0 && <span className="ml-2 text-blue-600 font-medium">+{newItemsCount} new</span>}
               </p>
             </div>
@@ -413,6 +515,18 @@ function NewsFeed() {
           </div>
 
           <div className="flex items-center gap-1">
+            {/* Mark All as Read */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={markAllAsRead}
+              disabled={filteredNews.length === 0}
+              title="Mark all as read"
+            >
+              <CheckCheck className="h-4 w-4" />
+            </Button>
+
             {/* Sort Control */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
